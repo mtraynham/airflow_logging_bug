@@ -1,0 +1,110 @@
+---
+version: '3.7'
+
+networks:
+  net:
+    driver: overlay
+    attachable: true
+
+services:
+  postgres:
+    image: postgres:alpine
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    healthcheck:
+      test: pg_isready -U airflow -d airflow
+      interval: 10s
+      timeout: 3s
+      start_period: 15s
+    ports:
+      - '5432:5432'
+    networks:
+      - net
+
+  redis:
+    image: redis:alpine
+    healthcheck:
+      test: redis-cli ping
+      interval: 10s
+      timeout: 3s
+      start_period: 15s
+    ports:
+      - '6379:6379'
+    networks:
+      - net
+
+  webserver:
+    image: apache/airflow:${AIRFLOW_VERSION}
+    volumes:
+      - ./dags:/dags
+    command:
+      - bash
+      - -c
+      - 'airflow db init
+      && airflow db upgrade
+      && airflow users create --username admin --firstname Admin --lastname User --password admin --role Admin --email test@admin.org
+      && airflow webserver'
+    environment:
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.session,airflow.api.auth.backend.basic_auth
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/1
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__DAGS_FOLDER: /dags
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__FERNET_KEY: yxfSDUw_7SG6BhBstIt7dFzL5rpnxvr_Jkv0tFyEJ3s=
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__LOGGING__LOGGING_LEVEL: DEBUG
+      AIRFLOW__WEBSERVER__SECRET_KEY: 0123456789
+    healthcheck:
+      test: curl --fail http://localhost:8080/health
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+    ports:
+      - '8080:8080'
+    networks:
+      - net
+
+  scheduler:
+    image: apache/airflow:${AIRFLOW_VERSION}
+    volumes:
+      - ./dags:/dags
+    command: scheduler
+    environment:
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.session,airflow.api.auth.backend.basic_auth
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/1
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__DAGS_FOLDER: /dags
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__FERNET_KEY: yxfSDUw_7SG6BhBstIt7dFzL5rpnxvr_Jkv0tFyEJ3s=
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__LOGGING__LOGGING_LEVEL: DEBUG
+      AIRFLOW__WEBSERVER__SECRET_KEY: 0123456789
+    healthcheck:
+      test: airflow db check
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - net
+
+  worker:
+    image: apache/airflow:${AIRFLOW_VERSION}
+    volumes:
+      - ./dags:/dags
+    command: celery worker
+    environment:
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.session,airflow.api.auth.backend.basic_auth
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/1
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__DAGS_FOLDER: /dags
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__CORE__FERNET_KEY: yxfSDUw_7SG6BhBstIt7dFzL5rpnxvr_Jkv0tFyEJ3s=
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__LOGGING__LOGGING_LEVEL: DEBUG
+      AIRFLOW__WEBSERVER__SECRET_KEY: 0123456789
+    networks:
+      - net
